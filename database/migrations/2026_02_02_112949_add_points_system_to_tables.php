@@ -11,11 +11,12 @@ return new class extends Migration
      */
     public function up(): void
     {
+        Schema::table('tickets', function (Blueprint $table) {
+            $table->integer('reward_points')->default(0)->after('heures_reelles');
+        });
+
         Schema::table('users', function (Blueprint $table) {
-            $table->enum('role', ['admin', 'manager', 'collaborateur', 'client'])->default('collaborateur')->after('email');
-            $table->string('telephone')->nullable()->after('email');
-            $table->foreignId('team_id')->nullable()->constrained('teams')->onDelete('set null')->after('role');
-            $table->softDeletes();
+            $table->integer('points')->default(0)->after('role');
         });
     }
 
@@ -24,9 +25,12 @@ return new class extends Migration
      */
     public function down(): void
     {
+        Schema::table('tickets', function (Blueprint $table) {
+            $table->dropColumn('reward_points');
+        });
+
         Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn(['role', 'telephone', 'team_id']);
-            $table->dropSoftDeletes();
+            $table->dropColumn('points');
         });
     }
 };

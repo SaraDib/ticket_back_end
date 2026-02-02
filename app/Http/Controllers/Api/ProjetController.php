@@ -17,9 +17,35 @@ class ProjetController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
-        $projets = Projet::with(['client', 'manager'])->get();
+        $user = $request->user();
+        $query = Projet::with(['client', 'manager']);
+
+        if ($user->role === 'client') {
+            $client = $user->client;
+            if ($client) {
+                $query->where('client_id', $client->id);
+            } else {
+                // Si l'utilisateur est client mais n'a pas de fiche client liée
+                return response()->json([]);
+            }
+        } elseif ($user->role === 'manager') {
+            // Un manager peut voir uniquement les projets où il est manager
+            $query->where('manager_id', $user->id);
+        } elseif ($user->role === 'collaborateur') {
+            $query->where(function($q) use ($user) {
+                // Projets dont il est manager
+                $q->where('manager_id', $user->id)
+                // OU projets où il a au moins un ticket (assigné ou crée)
+                ->orWhereHas('tickets', function($sub) use ($user) {
+                    $sub->where('assigned_to', $user->id)
+                        ->orWhere('created_by', $user->id);
+                });
+            });
+        }
+
+        $projets = $query->get();
         return response()->json($projets);
     }
 
@@ -43,6 +69,14 @@ class ProjetController extends Controller
 
         $projet = Projet::create($validated);
 
+        // Créer automatiquement une étape "Général" pour tous les tickets non spécifiques
+        $projet->etapes()->create([
+            'nom' => 'Général',
+            'description' => 'Étape générale pour les tickets non spécifiques',
+            'ordre' => 0,
+            'statut' => 'en_cours',
+        ]);
+
         if ($projet->manager_id) {
             $manager = User::find($projet->manager_id);
             if ($manager) {
@@ -56,9 +90,43 @@ class ProjetController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(string $id)
+    public function show(Request $request, string $id)
     {
-        $projet = Projet::with(['client', 'manager', 'etapes', 'documents', 'tickets'])->findOrFail($id);
+        $user = $request->user();
+        $projet = Projet::with([
+            'client', 
+            'manager', 
+            'etapes', 
+            'documents', 
+            'tickets.assignedTo:id,name,email',
+            'tickets.createdBy:id,name,email',
+            'tickets.etape:id,nom,ordre'
+        ])->findOrFail($id);
+
+        // Sécurité pour les clients
+        if ($user->role === 'client') {
+            $client = $user->client;
+            if (!$client || $projet->client_id !== $client->id) {
+                return response()->json(['message' => 'Accès interdit'], 403);
+            }
+        } elseif ($user->role === 'manager') {
+            // Un manager peut accéder uniquement s'il est le manager du projet
+            if ($projet->manager_id !== $user->id) {
+                return response()->json(['message' => 'Accès interdit'], 403);
+            }
+        } elseif ($user->role === 'collaborateur') {
+            // Un collaborateur peut accéder s'il est manager ou s'il a au moins un ticket
+            $isManager = $projet->manager_id === $user->id;
+            $hasTickets = $projet->tickets()->where(function($q) use ($user) {
+                $q->where('assigned_to', $user->id)
+                  ->orWhere('created_by', $user->id);
+            })->exists();
+
+            if (!$isManager && !$hasTickets) {
+                return response()->json(['message' => 'Accès interdit'], 403);
+            }
+        }
+
         return response()->json($projet);
     }
 
@@ -163,8 +231,29 @@ class ProjetController extends Controller
     /**
      * Get project documents
      */
-    public function documents(Projet $projet)
+    public function documents(Request $request, Projet $projet)
     {
+        $user = $request->user();
+        if ($user->role === 'client') {
+            $client = $user->client;
+            if (!$client || $projet->client_id !== $client->id) {
+                return response()->json(['message' => 'Accès interdit'], 403);
+            }
+        } elseif ($user->role === 'manager') {
+            if ($projet->manager_id !== $user->id) {
+                return response()->json(['message' => 'Accès interdit'], 403);
+            }
+        } elseif ($user->role === 'collaborateur') {
+            // Même logique que show()
+            $isManager = $projet->manager_id === $user->id;
+            $hasTickets = $projet->tickets()->where(function($q) use ($user) {
+                $q->where('assigned_to', $user->id)->orWhere('created_by', $user->id);
+            })->exists();
+
+            if (!$isManager && !$hasTickets) {
+                return response()->json(['message' => 'Accès interdit'], 403);
+            }
+        }
         return response()->json($projet->documents);
     }
 
@@ -173,6 +262,27 @@ class ProjetController extends Controller
      */
     public function uploadDocument(Request $request, Projet $projet)
     {
+        $user = $request->user();
+        if ($user->role === 'client') {
+            $client = $user->client;
+            if (!$client || $projet->client_id !== $client->id) {
+                return response()->json(['message' => 'Accès interdit'], 403);
+            }
+        } elseif ($user->role === 'manager') {
+            if ($projet->manager_id !== $user->id) {
+                return response()->json(['message' => 'Accès interdit'], 403);
+            }
+        } elseif ($user->role === 'collaborateur') {
+            $isManager = $projet->manager_id === $user->id;
+            $hasTickets = $projet->tickets()->where(function($q) use ($user) {
+                $q->where('assigned_to', $user->id)->orWhere('created_by', $user->id);
+            })->exists();
+
+            if (!$isManager && !$hasTickets) {
+                return response()->json(['message' => 'Accès interdit'], 403);
+            }
+        }
+
         $request->validate([
             'fichier' => 'required|file|max:10240',
             'type' => 'required|string',
@@ -198,8 +308,29 @@ class ProjetController extends Controller
     /**
      * Delete document for project
      */
-    public function supprimerDocument(Projet $projet, Document $document)
+    public function supprimerDocument(Request $request, Projet $projet, Document $document)
     {
+        $user = $request->user();
+        if ($user->role === 'client') {
+            $client = $user->client;
+            if (!$client || $projet->client_id !== $client->id) {
+                return response()->json(['message' => 'Accès interdit'], 403);
+            }
+        } elseif ($user->role === 'manager') {
+            if ($projet->manager_id !== $user->id) {
+                return response()->json(['message' => 'Accès interdit'], 403);
+            }
+        } elseif ($user->role === 'collaborateur') {
+            $isManager = $projet->manager_id === $user->id;
+            $hasTickets = $projet->tickets()->where(function($q) use ($user) {
+                $q->where('assigned_to', $user->id)->orWhere('created_by', $user->id);
+            })->exists();
+
+            if (!$isManager && !$hasTickets) {
+                return response()->json(['message' => 'Accès interdit'], 403);
+            }
+        }
+
         // Supprimer le fichier physiquement
         Storage::delete($document->fichier_path);
         

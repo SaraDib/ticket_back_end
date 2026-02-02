@@ -11,9 +11,13 @@ class ClientController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
-        return response()->json(Client::all());
+        $user = $request->user();
+        if ($user->role === 'client') {
+            return response()->json(Client::with('user')->where('user_id', $user->id)->get());
+        }
+        return response()->json(Client::with('user')->get());
     }
 
     /**
@@ -28,6 +32,7 @@ class ClientController extends Controller
             'telephone' => 'nullable|string',
             'email' => 'nullable|email|unique:clients,email',
             'adresse' => 'nullable|string',
+            'user_id' => 'nullable|exists:users,id',
         ]);
 
         $client = Client::create($validated);
@@ -37,9 +42,15 @@ class ClientController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(string $id)
+    public function show(Request $request, string $id)
     {
+        $user = $request->user();
         $client = Client::with('projets')->findOrFail($id);
+
+        if ($user->role === 'client' && $client->user_id !== $user->id) {
+            return response()->json(['message' => 'Accès interdit'], 403);
+        }
+
         return response()->json($client);
     }
 
@@ -57,6 +68,7 @@ class ClientController extends Controller
             'telephone' => 'sometimes|string',
             'email' => 'sometimes|email|unique:clients,email,' . $id,
             'adresse' => 'sometimes|string',
+            'user_id' => 'nullable|exists:users,id',
         ]);
 
         $client->update($validated);

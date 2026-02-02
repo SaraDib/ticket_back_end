@@ -11,9 +11,17 @@ class TeamController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
-        return response()->json(Team::with('members')->get());
+        $user = $request->user();
+        $query = Team::with('members');
+
+        // Les managers ne voient que leur propre équipe
+        if ($user->role === 'manager' && $user->team_id) {
+            $query->where('id', $user->team_id);
+        }
+
+        return response()->json($query->get());
     }
 
     /**
@@ -63,5 +71,24 @@ class TeamController extends Controller
         $team = Team::findOrFail($id);
         $team->delete();
         return response()->json(null, 204);
+    }
+
+    /**
+     * Get my team members (for managers)
+     */
+    public function myTeamMembers(Request $request)
+    {
+        $user = $request->user();
+        
+        // Seuls les managers avec une équipe peuvent utiliser cette route
+        if ($user->role !== 'manager' || !$user->team_id) {
+            return response()->json(['message' => 'Accès interdit'], 403);
+        }
+
+        $team = Team::with('members')->findOrFail($user->team_id);
+        return response()->json([
+            'team' => $team,
+            'members' => $team->members
+        ]);
     }
 }

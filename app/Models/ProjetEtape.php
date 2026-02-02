@@ -31,4 +31,12 @@ class ProjetEtape extends Model
     {
         return $this->belongsTo(Projet::class);
     }
+
+    /**
+     * Une étape a plusieurs tickets
+     */
+    public function tickets()
+    {
+        return $this->hasMany(Ticket::class, 'etape_id');
+    }
 }

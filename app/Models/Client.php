@@ -17,7 +17,16 @@ class Client extends Model
         'telephone',
         'email',
         'adresse',
+        'user_id',
     ];
+
+    /**
+     * Un client peut avoir un compte utilisateur
+     */
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
 
     /**
      * Un client peut avoir plusieurs projets
@@ -25,5 +34,13 @@ class Client extends Model
     public function projets()
     {
         return $this->hasMany(Projet::class);
+    }
+
+    /**
+     * Un client peut faire plusieurs demandes de tickets
+     */
+    public function ticketRequests()
+    {
+        return $this->hasMany(TicketRequest::class);
     }
 }

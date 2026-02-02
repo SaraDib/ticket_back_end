@@ -97,6 +97,18 @@ class DatabaseSeeder extends Seeder
             'adresse' => '101 Boulevard Zerktouni, Casablanca, Maroc',
         ]);
 
+        // Créer un compte utilisateur pour le client Maroc Telecom
+        $clientUser = User::create([
+            'name' => 'Client Maroc Telecom',
+            'email' => 'client@maroctelecom.ma',
+            'password' => Hash::make('password'),
+            'role' => 'client',
+            'telephone' => '+212 5 22 11 22 33',
+        ]);
+
+        // Lier l'utilisateur au client
+        $client1->update(['user_id' => $clientUser->id]);
+
         // Créer des projets internes
         $projetRakops = Projet::create([
             'nom' => 'Rakops - Plateforme Interne',
@@ -201,7 +213,7 @@ class DatabaseSeeder extends Seeder
             'projet_id' => $projetClient1->id,
             'created_by' => $manager1->id,
             'assigned_to' => $collabModels[2]->id,
-            'statut' => 'termine',
+            'statut' => 'ferme',
             'priorite' => 'normale',
             'heures_estimees' => 8,
             'heures_reelles' => 6,

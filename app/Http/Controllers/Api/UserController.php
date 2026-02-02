@@ -17,13 +17,41 @@ class UserController extends Controller
      */
     public function index(Request $request)
     {
+        $user = $request->user();
         $query = User::with(['team', 'documents']);
+        
+        // Restriction pour les clients : ils ne peuvent voir que les admins et managers
+        if ($user->role === 'client') {
+            $query->whereIn('role', ['admin', 'manager']);
+        } elseif ($user->role === 'manager') {
+            // Les managers ne voient que les membres de leur équipe
+            if ($user->team_id) {
+                $query->where('team_id', $user->team_id);
+            } else {
+                // Si le manager n'a pas d'équipe, il ne voit personne
+                $query->whereRaw('1 = 0');
+            }
+        }
         
         if ($request->has('role')) {
             $query->where('role', $request->role);
         }
 
-        return response()->json($query->get());
+        $users = $query->with(['pointHistories.ticket.projet'])->get();
+
+        // Calcul du cumul DH pour chaque utilisateur
+        $users->each(function($u) {
+            $total = 0;
+            if ($u->pointHistories) {
+                foreach ($u->pointHistories as $history) {
+                    $isInterne = optional(optional($history->ticket)->projet)->type === 'interne';
+                    $total += $isInterne ? ($history->points * 1.5) : ($history->points * 1);
+                }
+            }
+            $u->total_dh = $total;
+        });
+
+        return response()->json($users);
     }
 
     /**
@@ -37,7 +65,7 @@ class UserController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8',
-            'role' => 'required|in:admin,manager,collaborateur',
+            'role' => 'required|in:admin,manager,collaborateur,client',
             'telephone' => 'nullable|string',
             'team_id' => 'nullable|exists:teams,id',
         ]);
@@ -91,7 +119,7 @@ class UserController extends Controller
             'name' => 'sometimes|string|max:255',
             'email' => 'sometimes|string|email|max:255|unique:users,email,' . $id,
             'password' => 'nullable|string|min:8',
-            'role' => 'sometimes|in:admin,manager,collaborateur',
+            'role' => 'sometimes|in:admin,manager,collaborateur,client',
             'telephone' => 'nullable|string',
             'team_id' => 'nullable|exists:teams,id',
         ]);
@@ -119,8 +147,15 @@ class UserController extends Controller
     /**
      * Get user documents
      */
-    public function documents(User $user)
+    public function documents(Request $request, User $user)
     {
+        $currentUser = $request->user();
+        
+        // Un utilisateur peut voir ses propres documents, ou admin/manager peuvent tout voir
+        if ($currentUser->id !== $user->id && !in_array($currentUser->role, ['admin', 'manager'])) {
+            return response()->json(['message' => 'Accès interdit'], 403);
+        }
+
         return response()->json($user->documents);
     }
 
@@ -129,9 +164,16 @@ class UserController extends Controller
      */
     public function uploadDocument(Request $request, User $user)
     {
+        $currentUser = $request->user();
+        
+        // Un utilisateur peut uploader pour lui-même, ou admin/manager pour tout le monde
+        if ($currentUser->id !== $user->id && !in_array($currentUser->role, ['admin', 'manager'])) {
+            return response()->json(['message' => 'Accès interdit'], 403);
+        }
+
         $request->validate([
             'fichier' => 'required|file|max:10240',
-            'type' => 'required|string|in:demande_stage,contrat,attestation_travail,attestation_stage,cv,contrat_confidentialite,autre',
+            'type' => 'required|string|in:demande_stage,contrat,attestation_travail,attestation_stage,cv,contrat_confidentialite',
             'nom' => 'required|string|max:255',
         ]);
 
@@ -149,5 +191,69 @@ class UserController extends Controller
         ]);
 
         return response()->json($document, 201);
+    }
+
+    /**
+     * Delete document for user
+     */
+    public function supprimerDocument(Request $request, User $user, Document $document)
+    {
+        $currentUser = $request->user();
+        
+        // Un utilisateur peut supprimer ses propres documents, ou admin/manager peuvent tout faire
+        if ($currentUser->id !== $user->id && !in_array($currentUser->role, ['admin', 'manager'])) {
+            return response()->json(['message' => 'Accès interdit'], 403);
+        }
+
+        // Vérifier que le document appartient bien à l'utilisateur
+        if ($document->documentable_id !== $user->id || $document->documentable_type !== User::class) {
+            return response()->json(['message' => 'Document invalide'], 400);
+        }
+
+        // Supprimer le fichier physiquement
+        Storage::delete($document->fichier_path);
+        
+        $document->delete();
+        return response()->json(null, 204);
+    }
+
+    /**
+     * Get user point history
+     */
+    public function pointHistory(Request $request)
+    {
+        $user = $request->user();
+        $history = $user->pointHistories()->with(['ticket.projet'])->latest()->get();
+        
+        return response()->json([
+            'total_points' => $user->points,
+            'level' => $user->level,
+            'history' => $history
+        ]);
+    }
+
+    /**
+     * Get team point history (for managers/admins)
+     */
+    public function teamPointHistory(Request $request)
+    {
+        $user = $request->user();
+        
+        $query = \App\Models\PointHistory::with(['user', 'ticket.projet'])->latest();
+        
+        if ($user->role === 'manager') {
+            if ($user->team_id) {
+                $query->whereHas('user', function($q) use ($user) {
+                    $q->where('team_id', $user->team_id);
+                });
+            } else {
+                return response()->json([]);
+            }
+        }
+        
+        // Admin sees all, manager sees team
+        $history = $query->get();
+        
+        return response()->json($history);
     }
 }

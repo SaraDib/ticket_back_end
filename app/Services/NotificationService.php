@@ -53,8 +53,11 @@ class NotificationService
                 
                 Log::info("Envoi WhatsApp vers {$phone}");
                 
+                // Utiliser la variable d'environnement pour l'URL du service
+                $whatsappUrl = env('WHATSAPP_SERVICE_URL', 'http://localhost:3001');
+                
                 // Ajouter un timeout de 5 secondes pour éviter le blocage
-                $response = Http::timeout(5)->post('http://localhost:3001/send-message', [
+                $response = Http::timeout(5)->post("{$whatsappUrl}/send-message", [
                     'phone' => $phone,
                     'message' => "*{$titre}*\n\n{$message}"
                 ]);

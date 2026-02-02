@@ -25,6 +25,7 @@ class TicketController extends Controller
         // Optimize relationship loading with only necessary fields
         $query = Ticket::with([
             'projet:id,nom,type,statut,client_id',
+            'etape:id,nom,statut',
             'createdBy:id,name,email',
             'assignedTo:id,name,email'
         ]);
@@ -39,6 +40,33 @@ class TicketController extends Controller
 
         if ($request->has('statut')) {
             $query->where('statut', $request->statut);
+        }
+
+        // Restriction pour les clients : uniquement les tickets de leurs projets
+        // Restriction pour les managers : uniquement les tickets assignés aux membres de leur équipe
+        // Restriction pour les collaborateurs : uniquement leurs tickets assignés ou créés
+        $user = $request->user();
+        if ($user->role === 'client') {
+            $client = $user->client;
+            $clientId = $client ? $client->id : 0;
+            $query->whereIn('projet_id', function($q) use ($clientId) {
+                $q->select('id')->from('projets')->where('client_id', $clientId);
+            });
+        } elseif ($user->role === 'manager') {
+            // Un manager voit les tickets assignés aux membres de son équipe
+            if ($user->team_id) {
+                $query->whereHas('assignedTo', function($q) use ($user) {
+                    $q->where('team_id', $user->team_id);
+                });
+            } else {
+                // Si le manager n'a pas d'équipe, il ne voit rien
+                $query->whereRaw('1 = 0');
+            }
+        } elseif ($user->role === 'collaborateur') {
+            $query->where(function($q) use ($user) {
+                $q->where('assigned_to', $user->id)
+                  ->orWhere('created_by', $user->id);
+            });
         }
 
         // Add ordering
@@ -57,14 +85,16 @@ class TicketController extends Controller
             'titre' => 'required|string|max:255',
             'description' => 'required|string',
             'projet_id' => 'required|exists:projets,id',
+            'etape_id' => 'required|exists:projet_etapes,id',
             'assigned_to' => 'nullable|exists:users,id',
             'priorite' => 'required|in:basse,normale,haute,urgente',
             'heures_estimees' => 'nullable|numeric',
+            'reward_points' => 'nullable|integer|min:0',
             'deadline' => 'nullable|date',
         ]);
 
         $validated['created_by'] = auth()->id();
-        $validated['statut'] = 'ouvert';
+        $validated['statut'] = 'en_attente';
 
         $ticket = Ticket::create($validated);
 
@@ -78,9 +108,19 @@ class TicketController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(string $id)
+    public function show(Request $request, string $id)
     {
-        $ticket = Ticket::with(['projet', 'createdBy', 'assignedTo', 'commentaires.user', 'attachments.user'])->findOrFail($id);
+        $user = $request->user();
+        $ticket = Ticket::with(['projet', 'etape', 'createdBy', 'assignedTo', 'commentaires.user', 'attachments.user'])->findOrFail($id);
+        
+        // Sécurité pour les clients
+        if ($user->role === 'client') {
+            $client = $user->client;
+            if (!$client || $ticket->projet->client_id !== $client->id) {
+                return response()->json(['message' => 'Accès interdit'], 403);
+            }
+        }
+
         return response()->json($ticket);
     }
 
@@ -94,15 +134,39 @@ class TicketController extends Controller
         $validated = $request->validate([
             'titre' => 'sometimes|string|max:255',
             'description' => 'sometimes|string',
+            'etape_id' => 'nullable|exists:projet_etapes,id',
             'assigned_to' => 'nullable|exists:users,id',
             'statut' => 'sometimes|in:ouvert,en_cours,en_attente,resolu,ferme,rejete',
             'priorite' => 'sometimes|in:basse,normale,haute,urgente',
             'heures_estimees' => 'nullable|numeric|min:0',
             'heures_reelles' => 'nullable|numeric|min:0',
+            'reward_points' => 'nullable|integer|min:0',
             'deadline' => 'nullable|date',
         ]);
 
+        $oldStatus = $ticket->getOriginal('statut');
+        $oldAssignedTo = $ticket->getOriginal('assigned_to');
+
         $ticket->update($validated);
+
+        // Détecter si l'assigné a changé
+        if ($ticket->assigned_to && $ticket->assigned_to != $oldAssignedTo) {
+            NotificationService::send($ticket->assignedTo, 'Ticket assigné', "Le ticket #{$ticket->id}: {$ticket->titre} vous a été assigné.", ['system', 'email', 'whatsapp']);
+        }
+
+        // Détecter la réouverture (ex: de 'ferme' ou 'resolu' vers autre chose)
+        if (in_array($oldStatus, ['ferme', 'resolu']) && !in_array($ticket->statut, ['ferme', 'resolu'])) {
+            $notifyUsers = array_unique(array_filter([$ticket->created_by, $ticket->assigned_to]));
+            foreach ($notifyUsers as $userId) {
+                if ($userId !== auth()->id()) {
+                    $targetUser = \App\Models\User::find($userId);
+                    if ($targetUser) {
+                        NotificationService::send($targetUser, 'Ticket RÉOUVERT', "Le ticket #{$ticket->id}: {$ticket->titre} a été réouvert par " . auth()->user()->name, ['system', 'email', 'whatsapp']);
+                    }
+                }
+            }
+        }
+
         return response()->json($ticket);
     }
 
@@ -192,7 +256,14 @@ class TicketController extends Controller
             'statut' => 'required|in:ouvert,en_cours,en_attente,resolu,ferme,rejete',
         ]);
 
+        $user = $request->user();
+        if ($user->role === 'collaborateur' && in_array($validated['statut'], ['ferme', 'rejete'])) {
+            return response()->json(['message' => 'Seuls les managers ou admins peuvent fermer ou rejeter un ticket.'], 403);
+        }
+
+        $oldStatus = $ticket->statut;
         $ticket->update(['statut' => $validated['statut']]);
+        $newStatus = $ticket->statut;
 
         // Notification pour le créateur ou l'assigné
         $notifyUsers = array_unique(array_filter([$ticket->created_by, $ticket->assigned_to]));
@@ -200,7 +271,11 @@ class TicketController extends Controller
             if ($userId !== auth()->id()) {
                 $targetUser = \App\Models\User::find($userId);
                 if ($targetUser) {
-                    NotificationService::send($targetUser, 'Statut mis à jour', "Le statut du ticket #{$ticket->id} est passé à : {$validated['statut']}", ['system', 'whatsapp']);
+                    $isReopening = in_array($oldStatus, ['ferme', 'resolu']) && !in_array($newStatus, ['ferme', 'resolu']);
+                    $subject = $isReopening ? 'Ticket RÉOUVERT' : 'Statut mis à jour';
+                    $channels = $isReopening ? ['system', 'email', 'whatsapp'] : ['system', 'whatsapp'];
+                    
+                    NotificationService::send($targetUser, $subject, "Le statut du ticket #{$ticket->id} est passé de {$oldStatus} à : {$newStatus}", $channels);
                 }
             }
         }

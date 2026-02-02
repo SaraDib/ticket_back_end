@@ -15,9 +15,48 @@ class MeetingController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
-        return response()->json(Meeting::with(['organisateur', 'projet', 'participants'])->get());
+        $user = $request->user();
+        $query = Meeting::with(['organisateur', 'projet', 'participants']);
+
+        if ($user->role === 'client') {
+            $client = $user->client;
+            $clientId = $client ? $client->id : 0;
+            
+            $query->where(function($q) use ($clientId, $user) {
+                // Réunions liées à ses projets
+                $q->whereIn('projet_id', function($sub) use ($clientId) {
+                    $sub->select('id')->from('projets')->where('client_id', $clientId);
+                })
+                // OU réunions où il est participant
+                ->orWhereHas('participants', function($sub) use ($user) {
+                    $sub->where('users.id', $user->id);
+                });
+            });
+        } elseif ($user->role === 'manager') {
+            $query->where(function($q) use ($user) {
+                // Réunions qu'il organise
+                $q->where('organisateur_id', $user->id)
+                  // OU réunions où il participe
+                  ->orWhereHas('participants', function($sub) use ($user) {
+                      $sub->where('users.id', $user->id);
+                  })
+                  // OU réunions liées à ses projets
+                  ->orWhereIn('projet_id', function($sub) use ($user) {
+                      $sub->select('id')->from('projets')->where('manager_id', $user->id);
+                  });
+            });
+        } elseif ($user->role === 'collaborateur') {
+            $query->where(function($q) use ($user) {
+                $q->where('organisateur_id', $user->id)
+                  ->orWhereHas('participants', function($sub) use ($user) {
+                      $sub->where('users.id', $user->id);
+                  });
+            });
+        }
+
+        return response()->json($query->get());
     }
 
     /**
@@ -88,7 +127,17 @@ class MeetingController extends Controller
         $meeting->update($validated);
 
         if (isset($validated['participant_ids'])) {
+            $oldParticipants = $meeting->participants->pluck('id')->toArray();
             $meeting->participants()->sync($validated['participant_ids']);
+            
+            // Notifier les nouveaux participants
+            $newParticipants = array_diff($validated['participant_ids'], $oldParticipants);
+            foreach ($newParticipants as $userId) {
+                $pUser = User::find($userId);
+                if ($pUser) {
+                    NotificationService::send($pUser, 'Invitation à une réunion', "Vous avez été ajouté à la réunion: {$meeting->titre} le " . $meeting->date_heure->format('d/m/Y H:i'), ['system', 'email', 'whatsapp']);
+                }
+            }
         }
 
         return response()->json($meeting->load('participants'));
@@ -115,6 +164,14 @@ class MeetingController extends Controller
         ]);
 
         $meeting->participants()->syncWithoutDetaching($validated['participant_ids']);
+        
+        foreach ($validated['participant_ids'] as $userId) {
+            $pUser = User::find($userId);
+            if ($pUser) {
+                NotificationService::send($pUser, 'Invitation à une réunion', "Vous avez été ajouté à la réunion: {$meeting->titre} le " . $meeting->date_heure->format('d/m/Y H:i'), ['system', 'email', 'whatsapp']);
+            }
+        }
+
         return response()->json($meeting->load('participants'));
     }
 

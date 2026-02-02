@@ -25,7 +25,34 @@ class User extends Authenticatable
         'role',
         'telephone',
         'team_id',
+        'points',
+        'level',
     ];
+
+    protected static function booted()
+    {
+        static::saving(function ($user) {
+            if ($user->isDirty('points')) {
+                // Chaque palier de 1000 points augmente le level
+                // 0-1000 pts = Level 1
+                // 1001-2000 pts = Level 2
+                // etc.
+                if ($user->points <= 0) {
+                    $user->level = 1;
+                } else {
+                    $user->level = (int) floor(($user->points - 1) / 1000) + 1;
+                }
+            }
+        });
+    }
+
+    /**
+     * Historique des points de l'utilisateur
+     */
+    public function pointHistories()
+    {
+        return $this->hasMany(PointHistory::class);
+    }
 
     /**
      * The attributes that should be hidden for serialization.
@@ -52,6 +79,14 @@ class User extends Authenticatable
     public function team()
     {
         return $this->belongsTo(Team::class);
+    }
+
+    /**
+     * Un utilisateur peut être lié à un client
+     */
+    public function client()
+    {
+        return $this->hasOne(Client::class);
     }
 
     public function projetsGeres()

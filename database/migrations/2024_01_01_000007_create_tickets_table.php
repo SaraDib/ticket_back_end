@@ -27,7 +27,7 @@ return new class extends Migration
                 'resolu',
                 'ferme',
                 'rejete'
-            ])->default('ouvert');
+            ])->default('en_attente');
             
             $table->enum('priorite', ['basse', 'normale', 'haute', 'urgente'])->default('normale');
             

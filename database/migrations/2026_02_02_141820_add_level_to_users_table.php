@@ -12,10 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->enum('role', ['admin', 'manager', 'collaborateur', 'client'])->default('collaborateur')->after('email');
-            $table->string('telephone')->nullable()->after('email');
-            $table->foreignId('team_id')->nullable()->constrained('teams')->onDelete('set null')->after('role');
-            $table->softDeletes();
+            $table->integer('level')->default(1)->after('points');
         });
     }
 
@@ -25,8 +22,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn(['role', 'telephone', 'team_id']);
-            $table->dropSoftDeletes();
+            $table->dropColumn('level');
         });
     }
 };
