@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\TeamController;
 use App\Http\Controllers\Api\TicketController;
 use App\Http\Controllers\Api\TicketRequestController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\WhatsAppController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -146,5 +147,11 @@ Route::middleware('auth:sanctum')->group(function () {
             ]);
             return response()->json(['success' => true]);
         });
+    });
+
+    // WhatsApp Proxy
+    Route::prefix('whatsapp')->group(function () {
+        Route::get('/status', [WhatsAppController::class, 'getStatus']);
+        Route::post('/logout', [WhatsAppController::class, 'logout']);
     });
 });
