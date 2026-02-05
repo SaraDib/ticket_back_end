@@ -37,15 +37,19 @@ class UserController extends Controller
             $query->where('role', $request->role);
         }
 
+        // Récupérer les coefficients depuis la base de données
+        $internalCoeff = \App\Models\PointSetting::where('key', 'internal_coeff')->value('value') ?? 1.5;
+        $externalCoeff = \App\Models\PointSetting::where('key', 'external_coeff')->value('value') ?? 1.0;
+
         $users = $query->with(['pointHistories.ticket.projet'])->get();
 
         // Calcul du cumul DH pour chaque utilisateur
-        $users->each(function($u) {
+        $users->each(function($u) use ($internalCoeff, $externalCoeff) {
             $total = 0;
             if ($u->pointHistories) {
                 foreach ($u->pointHistories as $history) {
                     $isInterne = optional(optional($history->ticket)->projet)->type === 'interne';
-                    $total += $isInterne ? ($history->points * 1.5) : ($history->points * 1);
+                    $total += $history->points * ($isInterne ? $internalCoeff : $externalCoeff);
                 }
             }
             $u->total_dh = $total;
