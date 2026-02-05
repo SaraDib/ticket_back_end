@@ -226,7 +226,7 @@ class DatabaseSeeder extends Seeder
             'projet_id' => $projetClient2->id,
             'created_by' => $manager2->id,
             'assigned_to' => $collabModels[1]->id,
-            'statut' => 'ouvert',
+            'statut' => 'en_cours',
             'priorite' => 'urgente',
             'heures_estimees' => 4,
             'heures_reelles' => 0,

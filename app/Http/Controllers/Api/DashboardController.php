@@ -76,7 +76,7 @@ class DashboardController extends Controller
 
         // Tickets Actifs
         $activeTicketsConstraint = function($q) {
-            $q->whereNotIn('statut', ['resolu', 'ferme', 'rejete']);
+            $q->whereNotIn('statut', ['resolu', 'ferme']);
         };
         $ticketsActifs = (clone $ticketQuery)->where($activeTicketsConstraint)->count();
         $ticketsActifsLastMonth = (clone $ticketQuery)->where($activeTicketsConstraint)
@@ -170,7 +170,7 @@ class DashboardController extends Controller
         }
         
         $collaborateurs = $query->withCount(['assignedTickets' => function ($query) {
-                $query->whereNotIn('statut', ['resolu', 'ferme', 'rejete']);
+                $query->whereNotIn('statut', ['resolu', 'ferme']);
             }])
             ->get();
 

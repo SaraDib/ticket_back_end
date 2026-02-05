@@ -30,4 +30,12 @@ class TicketCommentaire extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    /**
+     * Un commentaire peut avoir des pièces jointes
+     */
+    public function attachments()
+    {
+        return $this->hasMany(TicketAttachment::class, 'commentaire_id');
+    }
 }

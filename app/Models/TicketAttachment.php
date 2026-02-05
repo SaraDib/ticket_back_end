@@ -11,6 +11,7 @@ class TicketAttachment extends Model
 
     protected $fillable = [
         'ticket_id',
+        'commentaire_id',
         'user_id',
         'fichier_path',
         'fichier_nom_original',
@@ -26,6 +27,14 @@ class TicketAttachment extends Model
     public function ticket()
     {
         return $this->belongsTo(Ticket::class);
+    }
+
+    /**
+     * Une pièce jointe peut appartenir à un commentaire
+     */
+    public function commentaire()
+    {
+        return $this->belongsTo(TicketCommentaire::class, 'commentaire_id');
     }
 
     /**

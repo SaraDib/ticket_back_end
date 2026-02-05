@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ClientController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\MeetingController;
+use App\Http\Controllers\Api\PointSettingController;
 use App\Http\Controllers\Api\ProjetController;
 use App\Http\Controllers\Api\TeamController;
 use App\Http\Controllers\Api\TicketController;
@@ -35,12 +36,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/profile', [AuthController::class, 'updateProfile']);
     });
 
-    // Clients (Admin uniquement pour modification, tous pour liste selon portée)
-    Route::middleware('role:admin')->post('clients', [ClientController::class, 'store']);
-    Route::middleware('role:admin')->put('clients/{client}', [ClientController::class, 'update']);
-    Route::middleware('role:admin')->delete('clients/{client}', [ClientController::class, 'destroy']);
-    Route::get('clients', [ClientController::class, 'index']); // La portée est gérée dans le contrôleur
-    Route::get('clients/{client}', [ClientController::class, 'show']);
+    // Clients (Admin uniquement - STRICT)
+    Route::middleware('role:admin')->group(function () {
+        Route::get('clients', [ClientController::class, 'index']);
+        Route::get('clients/{client}', [ClientController::class, 'show']);
+        Route::post('clients', [ClientController::class, 'store']);
+        Route::put('clients/{client}', [ClientController::class, 'update']);
+        Route::delete('clients/{client}', [ClientController::class, 'destroy']);
+    });
 
     // Teams (Admin et Managers)
     Route::middleware('role:admin,manager')->apiResource('teams', TeamController::class);
@@ -63,6 +66,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('points')->group(function () {
         Route::get('/history', [UserController::class, 'pointHistory']);
         Route::middleware('role:admin,manager')->get('/team-history', [UserController::class, 'teamPointHistory']);
+        
+        // Settings (coefficients modifiables)
+        Route::get('/settings', [PointSettingController::class, 'index']);
+        Route::middleware('role:admin')->put('/settings/{id}', [PointSettingController::class, 'update']);
     });
 
     // Projets (Admin et Managers pour création/modification, Clients pour consultation)
@@ -91,8 +98,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('tickets', TicketController::class);
     Route::post('tickets/{ticket}/commentaires', [TicketController::class, 'ajouterCommentaire']);
     Route::get('tickets/{ticket}/commentaires', [TicketController::class, 'commentaires']);
+    Route::get('tickets/{ticket}/search-users', [TicketController::class, 'searchUsersForMention']);
     Route::post('tickets/{ticket}/attachments', [TicketController::class, 'ajouterAttachment']);
     Route::get('tickets/{ticket}/attachments', [TicketController::class, 'attachments']);
+    Route::delete('tickets/{ticket}/attachments/{attachment}', [TicketController::class, 'deleteAttachment']);
     Route::put('tickets/{ticket}/statut', [TicketController::class, 'changerStatut']);
     Route::middleware('role:admin,manager')->group(function () {
         Route::put('tickets/{ticket}/assigner', [TicketController::class, 'assigner']);

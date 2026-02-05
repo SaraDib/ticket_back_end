@@ -100,7 +100,9 @@ class ProjetController extends Controller
             'documents', 
             'tickets.assignedTo:id,name,email',
             'tickets.createdBy:id,name,email',
-            'tickets.etape:id,nom,ordre'
+            'tickets.etape:id,nom,ordre',
+            'meetings.participants:id,name,email',
+            'meetings.organisateur:id,name,email'
         ])->findOrFail($id);
 
         // Sécurité pour les clients

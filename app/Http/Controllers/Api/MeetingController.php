@@ -87,7 +87,19 @@ class MeetingController extends Controller
             foreach ($validated['participant_ids'] as $userId) {
                 $pUser = User::find($userId);
                 if ($pUser) {
-                    NotificationService::send($pUser, 'Nouvelle réunion planifiée', "Vous êtes invité à la réunion: {$meeting->titre} le " . $meeting->date_heure->format('d/m/Y H:i'), ['system', 'email', 'whatsapp']);
+                    $message = "Vous êtes invité à la réunion: {$meeting->titre} le " . $meeting->date_heure->format('d/m/Y H:i');
+                    
+                    // Ajouter le lien de visio si disponible
+                    if (!empty($meeting->lien_visio)) {
+                        $message .= "\n\n🔗 Lien de visioconférence:\n{$meeting->lien_visio}";
+                    }
+                    
+                    // Ajouter le lieu si disponible (et pas de lien visio)
+                    if (!empty($meeting->lieu) && empty($meeting->lien_visio)) {
+                        $message .= "\n\n📍 Lieu: {$meeting->lieu}";
+                    }
+                    
+                    NotificationService::send($pUser, 'Nouvelle réunion planifiée', $message, ['system', 'email', 'whatsapp']);
                 }
             }
         }
@@ -135,7 +147,19 @@ class MeetingController extends Controller
             foreach ($newParticipants as $userId) {
                 $pUser = User::find($userId);
                 if ($pUser) {
-                    NotificationService::send($pUser, 'Invitation à une réunion', "Vous avez été ajouté à la réunion: {$meeting->titre} le " . $meeting->date_heure->format('d/m/Y H:i'), ['system', 'email', 'whatsapp']);
+                    $message = "Vous avez été ajouté à la réunion: {$meeting->titre} le " . $meeting->date_heure->format('d/m/Y H:i');
+                    
+                    // Ajouter le lien de visio si disponible
+                    if (!empty($meeting->lien_visio)) {
+                        $message .= "\n\n🔗 Lien de visioconférence:\n{$meeting->lien_visio}";
+                    }
+                    
+                    // Ajouter le lieu si disponible (et pas de lien visio)
+                    if (!empty($meeting->lieu) && empty($meeting->lien_visio)) {
+                        $message .= "\n\n📍 Lieu: {$meeting->lieu}";
+                    }
+                    
+                    NotificationService::send($pUser, 'Invitation à une réunion', $message, ['system', 'email', 'whatsapp']);
                 }
             }
         }
@@ -168,7 +192,19 @@ class MeetingController extends Controller
         foreach ($validated['participant_ids'] as $userId) {
             $pUser = User::find($userId);
             if ($pUser) {
-                NotificationService::send($pUser, 'Invitation à une réunion', "Vous avez été ajouté à la réunion: {$meeting->titre} le " . $meeting->date_heure->format('d/m/Y H:i'), ['system', 'email', 'whatsapp']);
+                $message = "Vous avez été ajouté à la réunion: {$meeting->titre} le " . $meeting->date_heure->format('d/m/Y H:i');
+                
+                // Ajouter le lien de visio si disponible
+                if (!empty($meeting->lien_visio)) {
+                    $message .= "\n\n🔗 Lien de visioconférence:\n{$meeting->lien_visio}";
+                }
+                
+                // Ajouter le lieu si disponible (et pas de lien visio)
+                if (!empty($meeting->lieu) && empty($meeting->lien_visio)) {
+                    $message .= "\n\n📍 Lieu: {$meeting->lieu}";
+                }
+                
+                NotificationService::send($pUser, 'Invitation à une réunion', $message, ['system', 'email', 'whatsapp']);
             }
         }
 

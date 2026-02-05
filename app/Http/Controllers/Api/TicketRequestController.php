@@ -142,7 +142,7 @@ class TicketRequestController extends Controller
                 'assigned_to' => $validated['assigned_to'],
                 'heures_estimees' => $validated['heures_estimees'] ?? null,
                 'deadline' => $validated['deadline'] ?? null,
-                'statut' => 'ouvert',
+                'statut' => 'en_cours',
             ]);
 
             // Mettre à jour la demande

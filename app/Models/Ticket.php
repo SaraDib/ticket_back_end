@@ -18,7 +18,7 @@ class Ticket extends Model
                 $newStatus = $ticket->statut;
 
                 // Marquer le début du travail
-                if ($oldStatus === 'en_attente' && in_array($newStatus, ['ouvert', 'en_cours'])) {
+                if ($oldStatus === 'en_attente' && $newStatus === 'en_cours') {
                     if (!$ticket->opened_at) {
                         $ticket->opened_at = now();
                     }
@@ -29,8 +29,8 @@ class Ticket extends Model
                     $ticket->heures_reelles = $ticket->calculateActualHours($ticket->opened_at, now());
                 }
 
-                // Pénalité : Si le ticket repasse de 'resolu' à 'ouvert' ou 'en_cours'
-                if ($oldStatus === 'resolu' && in_array($newStatus, ['ouvert', 'en_cours'])) {
+                // Pénalité : Si le ticket repasse de 'resolu' à 'en_cours'
+                if ($oldStatus === 'resolu' && $newStatus === 'en_cours') {
                     $currentPoints = $ticket->reward_points;
                     if ($currentPoints > 0) {
                         // Réduction de 20% et marquage explicite pour l'enregistrement
@@ -187,11 +187,11 @@ class Ticket extends Model
     }
 
     /**
-     * Scope pour tickets ouverts
+     * Scope pour tickets en cours (alias pour compatibilité)
      */
     public function scopeOuverts($query)
     {
-        return $query->where('statut', 'ouvert');
+        return $query->where('statut', 'en_cours');
     }
 
     /**
