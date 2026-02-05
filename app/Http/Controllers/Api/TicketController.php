@@ -46,7 +46,7 @@ class TicketController extends Controller
         // Restriction pour les managers : uniquement les tickets assignés aux membres de leur équipe
         // Restriction pour les collaborateurs : uniquement leurs tickets assignés ou créés
         $user = $request->user();
-        $role = strtolower($user->role);
+        $role = trim(strtolower($user->role));
 
         if ($role === 'client') {
             $client = $user->client;
@@ -55,20 +55,27 @@ class TicketController extends Controller
                 $q->select('id')->from('projets')->where('client_id', $clientId);
             });
         } elseif ($role === 'manager') {
-            // Un manager voit les tickets assignés aux membres de son équipe
-            if ($user->team_id) {
-                $query->whereHas('assignedTo', function($q) use ($user) {
-                    $q->where('team_id', $user->team_id);
-                });
-            } else {
-                // Si le manager n'a pas d'équipe, il ne voit rien (ou seulement les siens?)
-                $query->where(function($q) use ($user) {
-                    $q->where('assigned_to', $user->id)
-                      ->orWhere('created_by', $user->id);
-                });
-            }
+            // Un manager voit les tickets des membres de son équipe
+            // OU les tickets qu'il a créés ou qui lui sont assignés directement
+            $query->where(function($q) use ($user) {
+                $q->where('assigned_to', $user->id)
+                  ->orWhere('created_by', $user->id);
+                
+                if ($user->team_id) {
+                    $q->orWhereHas('assignedTo', function($sub) use ($user) {
+                        $sub->where('team_id', $user->team_id);
+                    });
+                }
+            });
         } elseif ($role === 'collaborateur') {
-            // Un collaborateur ne voit QUE ses tickets, point barre.
+            // Un collaborateur ne voit ABSOLUMENT QUE ses tickets (assignés ou créés)
+            $query->where(function($q) use ($user) {
+                $q->where('assigned_to', $user->id)
+                  ->orWhere('created_by', $user->id);
+            });
+        } elseif ($role !== 'admin') {
+            // Par défaut, si ce n'est pas un admin (et que c'est un rôle inconnu), 
+            // on ne montre que ses propres tickets par sécurité.
             $query->where(function($q) use ($user) {
                 $q->where('assigned_to', $user->id)
                   ->orWhere('created_by', $user->id);
