@@ -24,12 +24,15 @@ class UserController extends Controller
         if ($user->role === 'client') {
             $query->whereIn('role', ['admin', 'manager']);
         } elseif ($user->role === 'manager') {
-            // Les managers ne voient que les membres de leur équipe
-            if ($user->team_id) {
-                $query->where('team_id', $user->team_id);
+            // Les managers ne voient que les membres de leurs équipes (incluant eux-mêmes)
+            $userTeamIds = $user->teams->pluck('id');
+            if ($userTeamIds->isNotEmpty()) {
+                $query->whereHas('teams', function($q) use ($userTeamIds) {
+                    $q->whereIn('teams.id', $userTeamIds);
+                });
             } else {
-                // Si le manager n'a pas d'équipe, il ne voit personne
-                $query->whereRaw('1 = 0');
+                // Si le manager n'a pas d'équipe, il ne voit que lui-même
+                $query->where('id', $user->id);
             }
         }
         
@@ -71,12 +74,21 @@ class UserController extends Controller
             'password' => 'required|string|min:8',
             'role' => 'required|in:admin,manager,collaborateur,client',
             'telephone' => 'nullable|string',
+            'team_ids' => 'nullable|array',
+            'team_ids.*' => 'exists:teams,id',
             'team_id' => 'nullable|exists:teams,id',
         ]);
 
         $validated['password'] = Hash::make($validated['password']);
 
         $user = User::create($validated);
+        
+        if (isset($validated['team_ids'])) {
+            $user->teams()->sync($validated['team_ids']);
+        } elseif (isset($validated['team_id'])) {
+            $user->teams()->sync([$validated['team_id']]);
+        }
+
         \Log::info('✅ [UserController] Utilisateur créé', ['user_id' => $user->id]);
 
         // Envoyer les notifications EN ARRIÈRE-PLAN après avoir renvoyé la réponse HTTP
@@ -125,6 +137,8 @@ class UserController extends Controller
             'password' => 'nullable|string|min:8',
             'role' => 'sometimes|in:admin,manager,collaborateur,client',
             'telephone' => 'nullable|string',
+            'team_ids' => 'nullable|array',
+            'team_ids.*' => 'exists:teams,id',
             'team_id' => 'nullable|exists:teams,id',
         ]);
 
@@ -135,6 +149,12 @@ class UserController extends Controller
         }
 
         $user->update($validated);
+
+        if (isset($validated['team_ids'])) {
+            $user->teams()->sync($validated['team_ids']);
+        } elseif (isset($validated['team_id'])) {
+            $user->teams()->syncWithoutDetaching([$validated['team_id']]);
+        }
         return response()->json($user);
     }
 
@@ -246,13 +266,10 @@ class UserController extends Controller
         $query = \App\Models\PointHistory::with(['user', 'ticket.projet'])->latest();
         
         if ($user->role === 'manager') {
-            if ($user->team_id) {
-                $query->whereHas('user', function($q) use ($user) {
-                    $q->where('team_id', $user->team_id);
-                });
-            } else {
-                return response()->json([]);
-            }
+            $userTeamIds = $user->teams->pluck('id');
+            $query->whereHas('user.teams', function($q) use ($userTeamIds) {
+                $q->whereIn('teams.id', $userTeamIds);
+            });
         }
         
         // Admin sees all, manager sees team
