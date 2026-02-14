@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ClientController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\MeetingController;
+use App\Http\Controllers\Api\PointRateController;
 use App\Http\Controllers\Api\PointSettingController;
 use App\Http\Controllers\Api\ProjetController;
 use App\Http\Controllers\Api\TeamController;
@@ -73,6 +74,14 @@ Route::middleware('auth:sanctum')->group(function () {
         // Settings (coefficients modifiables)
         Route::get('/settings', [PointSettingController::class, 'index']);
         Route::middleware('role:admin')->put('/settings/{id}', [PointSettingController::class, 'update']);
+        
+        // Grille tarifaire (taux par level)
+        Route::get('/rates', [PointRateController::class, 'index']);
+        Route::middleware('role:admin')->group(function () {
+            Route::post('/rates', [PointRateController::class, 'store']);
+            Route::put('/rates/{rate}', [PointRateController::class, 'update']);
+            Route::delete('/rates/{rate}', [PointRateController::class, 'destroy']);
+        });
     });
 
     // Projets (Admin et Managers pour création/modification, Clients pour consultation)

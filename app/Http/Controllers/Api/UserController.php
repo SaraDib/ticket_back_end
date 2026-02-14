@@ -40,19 +40,23 @@ class UserController extends Controller
             $query->where('role', $request->role);
         }
 
-        // Récupérer les coefficients depuis la base de données
+        // Récupérer la grille tarifaire (taux par level)
+        $rates = \App\Models\PointRate::pluck('rate', 'level')->toArray();
         $internalCoeff = \App\Models\PointSetting::where('key', 'internal_coeff')->value('value') ?? 1.5;
         $externalCoeff = \App\Models\PointSetting::where('key', 'external_coeff')->value('value') ?? 1.0;
 
         $users = $query->with(['pointHistories.ticket.projet'])->get();
 
-        // Calcul du cumul DH pour chaque utilisateur
-        $users->each(function($u) use ($internalCoeff, $externalCoeff) {
+        // Calcul du cumul DH pour chaque utilisateur selon son level
+        $users->each(function($u) use ($rates, $internalCoeff, $externalCoeff) {
+            $levelRate = $rates[$u->level] ?? ($rates[1] ?? 0); // Taux du level actuel
             $total = 0;
             if ($u->pointHistories) {
                 foreach ($u->pointHistories as $history) {
                     $isInterne = optional(optional($history->ticket)->projet)->type === 'interne';
-                    $total += $history->points * ($isInterne ? $internalCoeff : $externalCoeff);
+                    $coeff = $isInterne ? $internalCoeff : $externalCoeff;
+                    // DH = Points * Taux du Level * Coeff Projet
+                    $total += $history->points * $levelRate * $coeff;
                 }
             }
             $u->total_dh = $total;
