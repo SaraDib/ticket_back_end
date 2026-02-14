@@ -18,6 +18,8 @@ class User extends Authenticatable
      *
      * @var array<int, string>
      */
+    protected $with = ['teams'];
+
     protected $fillable = [
         'name',
         'email',

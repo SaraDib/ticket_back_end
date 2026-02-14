@@ -20,7 +20,7 @@ class ProjetController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        $query = Projet::with(['client', 'manager']);
+        $query = Projet::with(['client', 'manager', 'teams']);
 
         if ($user->role === 'client') {
             $client = $user->client;
@@ -31,12 +31,21 @@ class ProjetController extends Controller
                 return response()->json([]);
             }
         } elseif ($user->role === 'manager') {
-            // Un manager peut voir uniquement les projets où il est manager
-            $query->where('manager_id', $user->id);
+            // Un manager voit les projets qu'il manage directement OU les projets de ses équipes
+            $query->where(function($q) use ($user) {
+                $q->where('manager_id', $user->id)
+                  ->orWhereHas('teams', function($t) use ($user) {
+                      $t->whereIn('teams.id', $user->teams->pluck('id'));
+                  });
+            });
         } elseif ($user->role === 'collaborateur') {
             $query->where(function($q) use ($user) {
                 // Projets dont il est manager
                 $q->where('manager_id', $user->id)
+                // OU projets de ses équipes
+                ->orWhereHas('teams', function($t) use ($user) {
+                    $t->whereIn('teams.id', $user->teams->pluck('id'));
+                })
                 // OU projets où il a au moins un ticket (assigné ou crée)
                 ->orWhereHas('tickets', function($sub) use ($user) {
                     $sub->where('assigned_to', $user->id)
@@ -65,6 +74,8 @@ class ProjetController extends Controller
             'date_debut' => 'nullable|date',
             'date_fin_prevue' => 'nullable|date',
             'statut' => 'nullable|in:en_attente,en_cours,termine,suspendu',
+            'team_ids' => 'nullable|array',
+            'team_ids.*' => 'exists:teams,id',
         ]);
 
         $projet = Projet::create($validated);
@@ -76,6 +87,10 @@ class ProjetController extends Controller
             'ordre' => 0,
             'statut' => 'en_cours',
         ]);
+
+        if ($request->has('team_ids')) {
+            $projet->teams()->sync($request->team_ids);
+        }
 
         if ($projet->manager_id) {
             $manager = User::find($projet->manager_id);
@@ -102,7 +117,8 @@ class ProjetController extends Controller
             'tickets.createdBy:id,name,email',
             'tickets.etape:id,nom,ordre',
             'meetings.participants:id,name,email',
-            'meetings.organisateur:id,name,email'
+            'meetings.organisateur:id,name,email',
+            'teams'
         ])->findOrFail($id);
 
         // Sécurité pour les clients
@@ -112,19 +128,23 @@ class ProjetController extends Controller
                 return response()->json(['message' => 'Accès interdit'], 403);
             }
         } elseif ($user->role === 'manager') {
-            // Un manager peut accéder uniquement s'il est le manager du projet
-            if ($projet->manager_id !== $user->id) {
+            // Un manager peut accéder uniquement s'il est le manager du projet OU s'il fait partie d'une équipe assignée au projet
+            $isManager = $projet->manager_id === $user->id;
+            $inTeam = $projet->teams()->whereIn('teams.id', $user->teams->pluck('id'))->exists();
+            
+            if (!$isManager && !$inTeam) {
                 return response()->json(['message' => 'Accès interdit'], 403);
             }
         } elseif ($user->role === 'collaborateur') {
-            // Un collaborateur peut accéder s'il est manager ou s'il a au moins un ticket
+            // Un collaborateur peut accéder s'il est manager, s'il fait partie d'une équipe assignée au projet, ou s'il a au moins un ticket
             $isManager = $projet->manager_id === $user->id;
+            $inTeam = $projet->teams()->whereIn('teams.id', $user->teams->pluck('id'))->exists();
             $hasTickets = $projet->tickets()->where(function($q) use ($user) {
                 $q->where('assigned_to', $user->id)
                   ->orWhere('created_by', $user->id);
             })->exists();
-
-            if (!$isManager && !$hasTickets) {
+            
+            if (!$isManager && !$inTeam && !$hasTickets) {
                 return response()->json(['message' => 'Accès interdit'], 403);
             }
         }
@@ -152,10 +172,16 @@ class ProjetController extends Controller
             'date_fin_prevue' => 'nullable|date',
             'date_fin_reelle' => 'nullable|date',
             'statut' => 'nullable|in:en_attente,en_cours,termine,suspendu',
+            'team_ids' => 'nullable|array',
+            'team_ids.*' => 'exists:teams,id',
         ]);
 
         $oldManagerId = $projet->manager_id;
         $projet->update($validated);
+
+        if ($request->has('team_ids')) {
+            $projet->teams()->sync($request->team_ids);
+        }
 
         if ($projet->manager_id && $projet->manager_id != $oldManagerId) {
             $manager = User::find($projet->manager_id);

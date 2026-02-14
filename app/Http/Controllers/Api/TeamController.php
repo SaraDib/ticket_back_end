@@ -14,11 +14,11 @@ class TeamController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        $query = Team::with('members');
+        $query = Team::with(['members', 'projets']);
 
-        // Les managers ne voient que leur propre équipe
-        if ($user->role === 'manager' && $user->team_id) {
-            $query->where('id', $user->team_id);
+        // Les managers ne voient que leurs équipes
+        if ($user->role === 'manager') {
+            $query->whereIn('id', $user->teams->pluck('id'));
         }
 
         return response()->json($query->get());

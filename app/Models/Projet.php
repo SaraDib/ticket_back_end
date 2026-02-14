@@ -48,6 +48,14 @@ class Projet extends Model
     }
 
     /**
+     * Un projet peut être affecté à plusieurs équipes
+     */
+    public function teams()
+    {
+        return $this->belongsToMany(Team::class, 'projet_team')->withTimestamps();
+    }
+
+    /**
      * Un projet a plusieurs étapes
      */
     public function etapes()

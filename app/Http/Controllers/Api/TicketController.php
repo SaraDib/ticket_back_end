@@ -61,9 +61,12 @@ class TicketController extends Controller
                 $q->where('assigned_to', $user->id)
                   ->orWhere('created_by', $user->id);
                 
-                if ($user->team_id) {
-                    $q->orWhereHas('assignedTo', function($sub) use ($user) {
-                        $sub->where('team_id', $user->team_id);
+                $userTeamIds = $user->teams->pluck('id');
+                if ($userTeamIds->isNotEmpty()) {
+                    $q->orWhereHas('assignedTo.teams', function($sub) use ($userTeamIds) {
+                        $sub->whereIn('teams.id', $userTeamIds);
+                    })->orWhereHas('projet.teams', function($sub) use ($userTeamIds) {
+                        $sub->whereIn('teams.id', $userTeamIds);
                     });
                 }
             });
@@ -215,12 +218,15 @@ class TicketController extends Controller
                 $message = "Le collaborateur {$currentUser->name} a commencé à travailler sur le ticket #{$ticket->id}: {$ticket->titre}.\n";
                 $message .= "Projet: {$ticket->projet->nom} (Type: {$ticket->projet->type})";
                 
-                // Notifier le manager de l'équipe
-                if ($currentUser->team_id) {
-                    $manager = \App\Models\User::where('role', 'manager')
-                        ->where('team_id', $currentUser->team_id)
-                        ->first();
-                    if ($manager) {
+                // Notifier les managers des équipes du collaborateur
+                $managerTeamIds = $user->teams->pluck('id');
+                if ($managerTeamIds->isNotEmpty()) {
+                    $managers = \App\Models\User::where('role', 'manager')
+                        ->whereHas('teams', function($q) use ($managerTeamIds) {
+                            $q->whereIn('teams.id', $managerTeamIds);
+                        })->get();
+                    
+                    foreach ($managers as $manager) {
                         NotificationService::send($manager, 'Ticket pris en charge', $message, ['system', 'whatsapp']);
                     }
                 }
@@ -238,12 +244,15 @@ class TicketController extends Controller
                 $message .= "Projet: {$ticket->projet->nom} (Type: {$ticket->projet->type})\n";
                 $message .= "Validation requise.";
                 
-                // Notifier le manager de l'équipe
-                if ($currentUser->team_id) {
-                    $manager = \App\Models\User::where('role', 'manager')
-                        ->where('team_id', $currentUser->team_id)
-                        ->first();
-                    if ($manager) {
+                // Notifier les managers des équipes du collaborateur
+                $managerTeamIds = $user->teams->pluck('id');
+                if ($managerTeamIds->isNotEmpty()) {
+                    $managers = \App\Models\User::where('role', 'manager')
+                        ->whereHas('teams', function($q) use ($managerTeamIds) {
+                            $q->whereIn('teams.id', $managerTeamIds);
+                        })->get();
+                    
+                    foreach ($managers as $manager) {
                         NotificationService::send($manager, 'Ticket résolu - Validation requise', $message, ['system', 'email', 'whatsapp']);
                     }
                 }

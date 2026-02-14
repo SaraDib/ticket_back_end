@@ -38,4 +38,12 @@ class Team extends Model
     {
         return $this->members()->where('role', 'manager');
     }
+
+    /**
+     * Une équipe peut travailler sur plusieurs projets
+     */
+    public function projets()
+    {
+        return $this->belongsToMany(Projet::class, 'projet_team')->withTimestamps();
+    }
 }
