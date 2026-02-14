@@ -34,14 +34,17 @@ class User extends Authenticatable
         static::saving(function ($user) {
             if ($user->isDirty('points')) {
                 // Chaque palier de 1000 points augmente le level
-                // 0-1000 pts = Level 1
-                // 1001-2000 pts = Level 2
-                // etc.
                 if ($user->points <= 0) {
                     $user->level = 1;
                 } else {
                     $user->level = (int) floor(($user->points - 1) / 1000) + 1;
                 }
+            }
+        });
+
+        static::saved(function ($user) {
+            if ($user->isDirty('team_id') && $user->team_id) {
+                $user->teams()->syncWithoutDetaching([$user->team_id]);
             }
         });
     }
@@ -74,7 +77,15 @@ class User extends Authenticatable
     ];
 
     /**
-     * Un utilisateur appartient à une team
+     * Un utilisateur peut appartenir à plusieurs teams
+     */
+    public function teams()
+    {
+        return $this->belongsToMany(Team::class, 'team_user')->withTimestamps();
+    }
+
+    /**
+     * Garder la relation team pour la compatibilité (renvoie la première équipe)
      */
     public function team()
     {

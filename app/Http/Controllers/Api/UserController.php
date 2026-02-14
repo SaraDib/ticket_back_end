@@ -18,7 +18,7 @@ class UserController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        $query = User::with(['team', 'documents']);
+        $query = User::with(['teams', 'documents']);
         
         // Restriction pour les clients : ils ne peuvent voir que les admins et managers
         if ($user->role === 'client') {
@@ -108,7 +108,7 @@ class UserController extends Controller
      */
     public function show(string $id)
     {
-        $user = User::with(['team', 'managedProjets', 'assignedTickets', 'documents'])->findOrFail($id);
+        $user = User::with(['teams', 'managedProjets', 'assignedTickets', 'documents'])->findOrFail($id);
         return response()->json($user);
     }
 

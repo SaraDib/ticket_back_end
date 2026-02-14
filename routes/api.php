@@ -46,7 +46,10 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // Teams (Admin et Managers)
-    Route::middleware('role:admin,manager')->apiResource('teams', TeamController::class);
+    Route::middleware('role:admin,manager')->group(function () {
+        Route::apiResource('teams', TeamController::class);
+        Route::post('teams/{team}/toggle-member', [TeamController::class, 'toggleMember']);
+    });
     Route::middleware('role:manager')->get('teams/my-team/members', [TeamController::class, 'myTeamMembers']);
 
     // Users / Collaborateurs (Admin et Managers pour la liste complète, consultation restreinte pour autres)

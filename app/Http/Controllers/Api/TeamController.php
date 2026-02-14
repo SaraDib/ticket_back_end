@@ -91,4 +91,26 @@ class TeamController extends Controller
             'members' => $team->members
         ]);
     }
+
+    /**
+     * Ajouter ou retirer un membre de l'équipe (Many-to-Many)
+     */
+    public function toggleMember(Request $request, Team $team)
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|exists:users,id',
+        ]);
+
+        $userId = $validated['user_id'];
+        
+        if ($team->members()->where('user_id', $userId)->exists()) {
+            $team->members()->detach($userId);
+            $action = 'removed';
+        } else {
+            $team->members()->attach($userId);
+            $action = 'added';
+        }
+
+        return response()->json(['status' => 'success', 'action' => $action]);
+    }
 }

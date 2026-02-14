@@ -16,7 +16,15 @@ class Team extends Model
     ];
 
     /**
-     * Une team a plusieurs collaborateurs
+     * Une team a plusieurs collaborateurs (Many-to-Many)
+     */
+    public function members()
+    {
+        return $this->belongsToMany(User::class, 'team_user')->withTimestamps();
+    }
+
+    /**
+     * Garder collaborateurs pour la compatibilité (One-to-Many)
      */
     public function collaborateurs()
     {
@@ -24,18 +32,10 @@ class Team extends Model
     }
 
     /**
-     * Alias pour collaborateurs (utilisé dans certains contrôleurs)
-     */
-    public function members()
-    {
-        return $this->collaborateurs();
-    }
-
-    /**
      * Récupérer uniquement les managers de la team
      */
     public function managers()
     {
-        return $this->hasMany(User::class)->where('role', 'manager');
+        return $this->members()->where('role', 'manager');
     }
 }
