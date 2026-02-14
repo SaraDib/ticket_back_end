@@ -37,10 +37,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/profile', [AuthController::class, 'updateProfile']);
     });
 
-    // Clients (Admin uniquement - STRICT)
-    Route::middleware('role:admin')->group(function () {
+    // Clients (Accès Admin et Manager pour projet, Client restreint dans contrôleur)
+    Route::middleware('role:admin,manager,client')->group(function () {
         Route::get('clients', [ClientController::class, 'index']);
         Route::get('clients/{client}', [ClientController::class, 'show']);
+    });
+
+    Route::middleware('role:admin')->group(function () {
         Route::post('clients', [ClientController::class, 'store']);
         Route::put('clients/{client}', [ClientController::class, 'update']);
         Route::delete('clients/{client}', [ClientController::class, 'destroy']);
