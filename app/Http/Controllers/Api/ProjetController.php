@@ -90,6 +90,21 @@ class ProjetController extends Controller
 
         if ($request->has('team_ids')) {
             $projet->teams()->sync($request->team_ids);
+            
+            // Notifier les membres des équipes
+            $teams = \App\Models\Team::with('members')->whereIn('id', $request->team_ids)->get();
+            $managerName = $projet->manager_id ? User::find($projet->manager_id)->name : 'Non défini';
+            
+            foreach ($teams as $team) {
+                $msg = "Votre équipe '{$team->nom}' a été affectée au nouveau projet : {$projet->nom}.\n";
+                $msg .= "Manager responsable : {$managerName}";
+                
+                foreach ($team->members as $member) {
+                    if ($member->id !== auth()->id()) {
+                        NotificationService::send($member, 'Nouveau projet pour votre équipe', $msg, ['system', 'whatsapp']);
+                    }
+                }
+            }
         }
 
         if ($projet->manager_id) {
@@ -180,7 +195,25 @@ class ProjetController extends Controller
         $projet->update($validated);
 
         if ($request->has('team_ids')) {
+            $oldTeamIds = DB::table('projet_team')->where('projet_id', $projet->id)->pluck('team_id')->toArray();
             $projet->teams()->sync($request->team_ids);
+            $newTeamIds = array_diff($request->team_ids, $oldTeamIds);
+            
+            if (!empty($newTeamIds)) {
+                $teams = \App\Models\Team::with('members')->whereIn('id', $newTeamIds)->get();
+                $managerName = $projet->manager ? $projet->manager->name : 'Non défini';
+                
+                foreach ($teams as $team) {
+                    $msg = "Votre équipe '{$team->nom}' a été affectée au projet : {$projet->nom}.\n";
+                    $msg .= "Manager responsable : {$managerName}";
+                    
+                    foreach ($team->members as $member) {
+                        if ($member->id !== auth()->id()) {
+                            NotificationService::send($member, 'Nouveau projet pour votre équipe', $msg, ['system', 'whatsapp']);
+                        }
+                    }
+                }
+            }
         }
 
         if ($projet->manager_id && $projet->manager_id != $oldManagerId) {
