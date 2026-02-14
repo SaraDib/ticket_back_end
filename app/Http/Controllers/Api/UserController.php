@@ -253,9 +253,23 @@ class UserController extends Controller
         $user = $request->user();
         $history = $user->pointHistories()->with(['ticket.projet'])->latest()->get();
         
+        // Récupérer la grille tarifaire pour le calcul
+        $rates = \App\Models\PointRate::pluck('rate', 'level')->toArray();
+        $internalCoeff = \App\Models\PointSetting::where('key', 'internal_coeff')->value('value') ?? 1.5;
+        $externalCoeff = \App\Models\PointSetting::where('key', 'external_coeff')->value('value') ?? 1.0;
+        
+        $levelRate = $rates[$user->level] ?? ($rates[1] ?? 0);
+
+        $history->each(function($h) use ($levelRate, $internalCoeff, $externalCoeff) {
+            $isInterne = optional(optional($h->ticket)->projet)->type === 'interne';
+            $coeff = $isInterne ? $internalCoeff : $externalCoeff;
+            $h->valeur_dh = $h->points * $levelRate * $coeff;
+        });
+
         return response()->json([
             'total_points' => $user->points,
             'level' => $user->level,
+            'level_rate' => $levelRate,
             'history' => $history
         ]);
     }
@@ -276,8 +290,21 @@ class UserController extends Controller
             });
         }
         
-        // Admin sees all, manager sees team
         $history = $query->get();
+
+        // Récupérer la grille tarifaire
+        $rates = \App\Models\PointRate::pluck('rate', 'level')->toArray();
+        $internalCoeff = \App\Models\PointSetting::where('key', 'internal_coeff')->value('value') ?? 1.5;
+        $externalCoeff = \App\Models\PointSetting::where('key', 'external_coeff')->value('value') ?? 1.0;
+
+        $history->each(function($h) use ($rates, $internalCoeff, $externalCoeff) {
+            if ($h->user) {
+                $levelRate = $rates[$h->user->level] ?? ($rates[1] ?? 0);
+                $isInterne = optional(optional($h->ticket)->projet)->type === 'interne';
+                $coeff = $isInterne ? $internalCoeff : $externalCoeff;
+                $h->valeur_dh = $h->points * $levelRate * $coeff;
+            }
+        });
         
         return response()->json($history);
     }
