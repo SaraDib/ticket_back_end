@@ -599,4 +599,69 @@ class TicketController extends Controller
         
         return response()->json($users);
     }
+
+    /**
+     * Import tickets in bulk
+     */
+    public function import(Request $request)
+    {
+        $validated = $request->validate([
+            'projet_id' => 'required|exists:projets,id',
+            'tickets' => 'required|array',
+            'tickets.*.titre' => 'required|string|max:255',
+            'tickets.*.description' => 'required|string',
+            'tickets.*.priorite' => 'required|string',
+        ]);
+
+        $projetId = $validated['projet_id'];
+        $ticketsData = $validated['tickets'];
+        $createdTickets = [];
+
+        // Essayer de trouver une étape "Default" ou la première étape du projet
+        $etape = \App\Models\ProjetEtape::where('projet_id', $projetId)
+            ->where('nom', 'LIKE', '%Default%')
+            ->first();
+
+        // Si pas de "Default", prendre la première par ordre
+        if (!$etape) {
+            $etape = \App\Models\ProjetEtape::where('projet_id', $projetId)
+                ->orderBy('ordre', 'asc')
+                ->first();
+        }
+
+        $etapeId = $etape ? $etape->id : null;
+
+        foreach ($ticketsData as $data) {
+            // Mapper la priorité du français/Excel vers les valeurs ENUM de la DB
+            $priorite = strtolower($data['priorite']);
+            if (str_contains($priorite, 'high') || str_contains($priorite, 'haute')) {
+                $priorite = 'haute';
+            } elseif (str_contains($priorite, 'normale') || str_contains($priorite, 'medium')) {
+                $priorite = 'normale';
+            } elseif (str_contains($priorite, 'low') || str_contains($priorite, 'basse')) {
+                $priorite = 'basse';
+            } elseif (str_contains($priorite, 'urgent')) {
+                $priorite = 'urgente';
+            } else {
+                $priorite = 'normale'; // Fallback
+            }
+
+            $ticket = Ticket::create([
+                'titre' => $data['titre'],
+                'description' => $data['description'],
+                'projet_id' => $projetId,
+                'etape_id' => $etapeId,
+                'created_by' => auth()->id(),
+                'statut' => 'en_attente',
+                'priorite' => $priorite,
+            ]);
+
+            $createdTickets[] = $ticket;
+        }
+
+        return response()->json([
+            'message' => count($createdTickets) . ' tickets importés avec succès.',
+            'tickets' => $createdTickets
+        ], 201);
+    }
 }

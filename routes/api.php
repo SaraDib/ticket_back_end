@@ -110,6 +110,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // Tickets (Tous peuvent consulter/commenter, Managers assignent)
+    Route::post('tickets/import', [TicketController::class, 'import']);
     Route::apiResource('tickets', TicketController::class);
     Route::post('tickets/{ticket}/commentaires', [TicketController::class, 'ajouterCommentaire']);
     Route::get('tickets/{ticket}/commentaires', [TicketController::class, 'commentaires']);
