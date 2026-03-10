@@ -611,6 +611,9 @@ class TicketController extends Controller
             'tickets.*.titre' => 'required|string|max:255',
             'tickets.*.description' => 'required|string',
             'tickets.*.priorite' => 'required|string',
+            'tickets.*.deadline' => 'nullable',
+            'tickets.*.heures_estimees' => 'nullable|numeric',
+            'tickets.*.reward_points' => 'nullable|integer',
         ]);
 
         $projetId = $validated['projet_id'];
@@ -646,6 +649,21 @@ class TicketController extends Controller
                 $priorite = 'normale'; // Fallback
             }
 
+            // Gérer le format de la date (Excel peut envoyer des nombres ou des strings)
+            $deadline = null;
+            if (!empty($data['deadline'])) {
+                try {
+                    // Si c'est un nombre (format Excel date), essayer de le convertir
+                    if (is_numeric($data['deadline'])) {
+                        $deadline = \Carbon\Carbon::instance(\PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($data['deadline']));
+                    } else {
+                        $deadline = \Carbon\Carbon::parse($data['deadline']);
+                    }
+                } catch (\Exception $e) {
+                    $deadline = null;
+                }
+            }
+
             $ticket = Ticket::create([
                 'titre' => $data['titre'],
                 'description' => $data['description'],
@@ -654,6 +672,9 @@ class TicketController extends Controller
                 'created_by' => auth()->id(),
                 'statut' => 'en_attente',
                 'priorite' => $priorite,
+                'deadline' => $deadline,
+                'heures_estimees' => $data['heures_estimees'] ?? null,
+                'reward_points' => $data['reward_points'] ?? 0,
             ]);
 
             $createdTickets[] = $ticket;
