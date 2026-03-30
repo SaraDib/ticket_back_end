@@ -113,11 +113,13 @@ class TicketController extends Controller
         $validated['statut'] = 'en_attente';
 
         $ticket = Ticket::create($validated);
-        $ticket->load('projet');
-
-        if ($ticket->assigned_to) {
+        $ticket->load(['projet', 'assignedTo']);
+        if ($ticket->assigned_to && $ticket->assignedTo) {
+            $projetNom = $ticket->projet ? $ticket->projet->nom : 'Projet inconnu';
+            $projetType = $ticket->projet ? " (Type: {$ticket->projet->type})" : '';
+            
             $message = "Le ticket #{$ticket->id}: {$ticket->titre} vous a été assigné.\n";
-            $message .= "Projet: {$ticket->projet->nom} (Type: {$ticket->projet->type})";
+            $message .= "Projet: {$projetNom}{$projetType}";
             NotificationService::send($ticket->assignedTo, 'Nouveau ticket assigné', $message, ['system', 'email', 'whatsapp']);
         }
 
@@ -191,20 +193,30 @@ class TicketController extends Controller
 
         // Détecter si l'assigné a changé
         if ($ticket->assigned_to && $ticket->assigned_to != $oldAssignedTo) {
-            $ticket->load('projet');
-            $message = "Le ticket #{$ticket->id}: {$ticket->titre} vous a été assigné.\n";
-            $message .= "Projet: {$ticket->projet->nom} (Type: {$ticket->projet->type})";
-            NotificationService::send($ticket->assignedTo, 'Ticket assigné', $message, ['system', 'email', 'whatsapp']);
+            $ticket->load(['projet', 'assignedTo']);
+            if ($ticket->assignedTo) {
+                $projetNom = $ticket->projet ? $ticket->projet->nom : 'Projet inconnu';
+                $projetType = $ticket->projet ? " (Type: {$ticket->projet->type})" : '';
+                
+                $message = "Le ticket #{$ticket->id}: {$ticket->titre} vous a été assigné.\n";
+                $message .= "Projet: {$projetNom}{$projetType}";
+                NotificationService::send($ticket->assignedTo, 'Ticket assigné', $message, ['system', 'email', 'whatsapp']);
+            }
         }
 
         // Détecter le statut 'reopen' - notification spécifique au collaborateur
         if ($ticket->statut === 'reopen' && $oldStatus !== 'reopen') {
             if ($ticket->assigned_to) {
-                $ticket->load('projet');
-                $message = "Le ticket #{$ticket->id}: {$ticket->titre} a été RÉOUVERT pour des mises à jour.\n";
-                $message .= "Projet: {$ticket->projet->nom} (Type: {$ticket->projet->type})\n";
-                $message .= "Veuillez vérifier les nouveaux commentaires et effectuer les modifications nécessaires.";
-                NotificationService::send($ticket->assignedTo, 'Ticket RÉOUVERT - Action Requise', $message, ['system', 'email', 'whatsapp']);
+                $ticket->load(['projet', 'assignedTo']);
+                if ($ticket->assignedTo) {
+                    $projetNom = $ticket->projet ? $ticket->projet->nom : 'Projet inconnu';
+                    $projetType = $ticket->projet ? " (Type: {$ticket->projet->type})" : '';
+                    
+                    $message = "Le ticket #{$ticket->id}: {$ticket->titre} a été RÉOUVERT pour des mises à jour.\n";
+                    $message .= "Projet: {$projetNom}{$projetType}\n";
+                    $message .= "Veuillez vérifier les nouveaux commentaires et effectuer les modifications nécessaires.";
+                    NotificationService::send($ticket->assignedTo, 'Ticket RÉOUVERT - Action Requise', $message, ['system', 'email', 'whatsapp']);
+                }
             }
         }
 
@@ -215,8 +227,11 @@ class TicketController extends Controller
             
             // en_attente → en_cours : Le collaborateur commence à travailler
             if ($oldStatus === 'en_attente' && $ticket->statut === 'en_cours') {
+                $projetNom = $ticket->projet ? $ticket->projet->nom : 'Projet inconnu';
+                $projetType = $ticket->projet ? " (Type: {$ticket->projet->type})" : '';
+                
                 $message = "Le collaborateur {$currentUser->name} a commencé à travailler sur le ticket #{$ticket->id}: {$ticket->titre}.\n";
-                $message .= "Projet: {$ticket->projet->nom} (Type: {$ticket->projet->type})";
+                $message .= "Projet: {$projetNom}{$projetType}";
                 
                 // Notifier les managers des équipes du collaborateur
                 $managerTeamIds = $user->teams->pluck('id');
@@ -240,8 +255,11 @@ class TicketController extends Controller
             
             // en_cours → resolu : Le collaborateur a terminé le travail
             if ($oldStatus === 'en_cours' && $ticket->statut === 'resolu') {
+                $projetNom = $ticket->projet ? $ticket->projet->nom : 'Projet inconnu';
+                $projetType = $ticket->projet ? " (Type: {$ticket->projet->type})" : '';
+                
                 $message = "Le collaborateur {$currentUser->name} a marqué le ticket #{$ticket->id}: {$ticket->titre} comme RÉSOLU.\n";
-                $message .= "Projet: {$ticket->projet->nom} (Type: {$ticket->projet->type})\n";
+                $message .= "Projet: {$projetNom}{$projetType}\n";
                 $message .= "Validation requise.";
                 
                 // Notifier les managers des équipes du collaborateur
@@ -566,12 +584,16 @@ class TicketController extends Controller
         ]);
 
         $ticket->update(['assigned_to' => $validated['user_id']]);
-        $ticket->load('projet');
+        $ticket->load(['projet', 'assignedTo']);
 
-        // Notification pour le nouvel assigné
-        $message = "Le ticket #{$ticket->id}: {$ticket->titre} vous a été assigné.\n";
-        $message .= "Projet: {$ticket->projet->nom} (Type: {$ticket->projet->type})";
-        NotificationService::send($ticket->assignedTo, 'Ticket assigné', $message, ['system', 'email', 'whatsapp']);
+        if ($ticket->assignedTo) {
+            $projetNom = $ticket->projet ? $ticket->projet->nom : 'Projet inconnu';
+            $projetType = $ticket->projet ? " (Type: {$ticket->projet->type})" : '';
+            
+            $message = "Le ticket #{$ticket->id}: {$ticket->titre} vous a été assigné.\n";
+            $message .= "Projet: {$projetNom}{$projetType}";
+            NotificationService::send($ticket->assignedTo, 'Ticket assigné', $message, ['system', 'email', 'whatsapp']);
+        }
 
         return response()->json($ticket);
     }
