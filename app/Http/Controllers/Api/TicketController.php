@@ -160,6 +160,11 @@ class TicketController extends Controller
     {
         $ticket = Ticket::findOrFail($id);
         
+        // Safeguard: normalize assigned_to if it's an object/array (from eager loading)
+        if ($request->has('assigned_to') && is_array($request->assigned_to)) {
+            $request->merge(['assigned_to' => $request->assigned_to['id'] ?? null]);
+        }
+        
         $validated = $request->validate([
             'titre' => 'sometimes|string|max:255',
             'description' => 'sometimes|string',
@@ -285,7 +290,9 @@ class TicketController extends Controller
 
         // Détecter la réouverture générale (ex: de 'ferme' ou 'resolu' vers autre chose)
         if (in_array($oldStatus, ['ferme', 'resolu']) && !in_array($ticket->statut, ['ferme', 'resolu', 'reopen'])) {
-            $notifyUsers = array_unique(array_filter([$ticket->created_by, $ticket->assigned_to]));
+            $notifyUsers = collect([$ticket->getAttributes()['created_by'] ?? null, $ticket->getAttributes()['assigned_to'] ?? null])
+                ->filter()
+                ->unique();
             foreach ($notifyUsers as $userId) {
                 if ($userId !== auth()->id()) {
                     $targetUser = \App\Models\User::find($userId);
@@ -396,7 +403,9 @@ class TicketController extends Controller
             }
         } else {
             // Si aucune mention, notifier créateur et assigné (comportement par défaut)
-            $notifyUsers = array_unique(array_filter([$ticket->created_by, $ticket->assigned_to]));
+            $notifyUsers = collect([$ticket->getAttributes()['created_by'] ?? null, $ticket->getAttributes()['assigned_to'] ?? null])
+                ->filter()
+                ->unique();
             foreach ($notifyUsers as $userId) {
                 if ($userId !== auth()->id()) {
                     $targetUser = \App\Models\User::find($userId);
@@ -567,7 +576,9 @@ class TicketController extends Controller
             }
             
             // Notification pour le créateur ou l'assigné (autres statuts)
-            $notifyUsers = array_unique(array_filter([$ticket->created_by, $ticket->assigned_to]));
+            $notifyUsers = collect([$ticket->getAttributes()['created_by'] ?? null, $ticket->getAttributes()['assigned_to'] ?? null])
+                ->filter()
+                ->unique();
             foreach ($notifyUsers as $userId) {
                 if ($userId !== auth()->id()) {
                     $targetUser = \App\Models\User::find($userId);
