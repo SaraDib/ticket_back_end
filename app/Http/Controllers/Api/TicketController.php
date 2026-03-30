@@ -498,11 +498,16 @@ class TicketController extends Controller
         // Notification spécifique pour le statut 'reopen'
         if ($newStatus === 'reopen') {
             if ($ticket->assigned_to) {
-                $ticket->load('projet');
-                $message = "Le ticket #{$ticket->id}: {$ticket->titre} a été RÉOUVERT pour des mises à jour.\n";
-                $message .= "Projet: {$ticket->projet->nom} (Type: {$ticket->projet->type})\n";
-                $message .= "Veuillez vérifier les nouveaux commentaires et effectuer les modifications nécessaires.";
-                NotificationService::send($ticket->assignedTo, 'Ticket RÉOUVERT - Action Requise', $message, ['system', 'email', 'whatsapp']);
+                $ticket->load(['projet', 'assignedTo']);
+                if ($ticket->assignedTo) {
+                    $projetNom = $ticket->projet ? $ticket->projet->nom : 'Projet inconnu';
+                    $projetType = $ticket->projet ? " (Type: {$ticket->projet->type})" : '';
+                    
+                    $message = "Le ticket #{$ticket->id}: {$ticket->titre} a été RÉOUVERT pour des mises à jour.\n";
+                    $message .= "Projet: {$projetNom}{$projetType}\n";
+                    $message .= "Veuillez vérifier les nouveaux commentaires et effectuer les modifications nécessaires.";
+                    NotificationService::send($ticket->assignedTo, 'Ticket RÉOUVERT - Action Requise', $message, ['system', 'email', 'whatsapp']);
+                }
             }
         } else {
             // Notifier le manager et l'admin lors des changements de statut par le collaborateur
@@ -511,8 +516,11 @@ class TicketController extends Controller
                 
                 // en_attente → en_cours : Le collaborateur commence à travailler
                 if ($oldStatus === 'en_attente' && $newStatus === 'en_cours') {
+                    $projetNom = $ticket->projet ? $ticket->projet->nom : 'Projet inconnu';
+                    $projetType = $ticket->projet ? " (Type: {$ticket->projet->type})" : '';
+                    
                     $message = "Le collaborateur {$user->name} a commencé à travailler sur le ticket #{$ticket->id}: {$ticket->titre}.\n";
-                    $message .= "Projet: {$ticket->projet->nom} (Type: {$ticket->projet->type})";
+                    $message .= "Projet: {$projetNom}{$projetType}";
                     
                     // Notifier le manager de l'équipe
                     if ($user->team_id) {
@@ -533,8 +541,11 @@ class TicketController extends Controller
                 
                 // en_cours → resolu : Le collaborateur a terminé le travail
                 if ($oldStatus === 'en_cours' && $newStatus === 'resolu') {
+                    $projetNom = $ticket->projet ? $ticket->projet->nom : 'Projet inconnu';
+                    $projetType = $ticket->projet ? " (Type: {$ticket->projet->type})" : '';
+                    
                     $message = "Le collaborateur {$user->name} a marqué le ticket #{$ticket->id}: {$ticket->titre} comme RÉSOLU.\n";
-                    $message .= "Projet: {$ticket->projet->nom} (Type: {$ticket->projet->type})\n";
+                    $message .= "Projet: {$projetNom}{$projetType}\n";
                     $message .= "Validation requise.";
                     
                     // Notifier le manager de l'équipe
